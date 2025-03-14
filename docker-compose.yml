@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: drone_db
+      POSTGRES_USER: drone_user
+      POSTGRES_PASSWORD: drone_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - minio
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=drone_db
+      - POSTGRES_USER=drone_user
+      - POSTGRES_PASSWORD=drone_password
+      - MINIO_ENDPOINT=minio
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    volumes:
+      - ./api:/app/api
+      - ./etl:/app/etl
+      - ./scripts:/app/scripts
+
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+      - minio
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=drone_db
+      - POSTGRES_USER=drone_user
+      - POSTGRES_PASSWORD=drone_password
+      - MINIO_ENDPOINT=minio
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    volumes:
+      - ./api:/app/api
+      - ./etl:/app/etl
+      - ./scripts:/app/scripts
+
+  data-loader:
+    image: postgres:15
+    depends_on:
+      - postgres
+    volumes:
+      - ./scripts:/app/scripts
+    command: >
+      bash -c "chmod +x /app/scripts/load_data.sh && /app/scripts/load_data.sh"
+
+volumes:
+  postgres_data:
+  minio_data: 
